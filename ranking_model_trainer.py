@@ -1,5 +1,7 @@
+from typing import Dict, Text
 import numpy as np
 import tensorflow as tf
+import tensorflow_recommenders as tfrs
 
 
 class MovieRankingModel(tf.keras.Model):
@@ -52,3 +54,26 @@ class MovieRankingModel(tf.keras.Model):
         return self.ratings(tf.concat([user_embedding, movie_embedding], axis=2))
 
 
+class MovielensModel(tfrs.models.Model):
+
+    def __init__(self):
+        super().__init__()
+
+        self.ranking_model: tf.keras.Model = MovieRankingModel()
+
+        self.task: tf.keras.layers.Layer = tfrs.tasks.Ranking(
+            loss=tf.keras.losses.MeanSquaredError,
+            metrics=[tf.keras.metrics.RootMeanSquaredError()]
+        )
+
+    def call(self, inputs: Dict[str, tf.Tensor]) -> tf.Tensor:
+        return self.ranking_model((inputs['userId'], inputs['movieId']))
+
+    def compute_loss(self,
+                     inputs: Dict[Text, tf.Tensor],
+                     training: bool = False) -> tf.Tensor:
+
+        labels = inputs[1]
+        rating_predictions = self(inputs[0])
+
+        return self.task(labels=labels, predictions=rating_predictions)
