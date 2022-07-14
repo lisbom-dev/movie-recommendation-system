@@ -78,7 +78,7 @@ class MovielensModel(tfrs.models.Model):
         self.ranking_model: tf.keras.Model = MovieRankingModel()
 
         self.task: tf.keras.layers.Layer = tfrs.tasks.Ranking(
-            loss=tf.keras.losses.MeanSquaredError,
+            loss=tf.keras.losses.MeanSquaredError(),
             metrics=[tf.keras.metrics.RootMeanSquaredError()]
         )
 
