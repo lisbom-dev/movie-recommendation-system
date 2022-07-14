@@ -50,3 +50,15 @@ def _create_pipeline(pipeline_name: str, pipeline_root: str,
         components=components
     )
 
+
+if __name__ == '__main__':
+    tfx.orchestration.LocalDagRunner().run(
+        _create_pipeline(
+            pipeline_name=PIPELINE_NAME,
+            pipeline_root=PIPELINE_ROOT,
+            data_root=DATA_ROOT,
+            module_file=_trainer_module_file,
+            serving_model_dir=SERVING_MODEL_DIR,
+            metadata_path=METADATA_PATH
+        )
+    )
