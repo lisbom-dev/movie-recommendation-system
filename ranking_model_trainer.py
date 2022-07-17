@@ -16,6 +16,7 @@ _FEATURE_SPEC = {
     'userId': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
     'userAge': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
     'movieId': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
+    'movieGenres': tf.io.FixedLenFeature(shape=[1], dtype=tf.string),
     'rating': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
 }
 
@@ -33,6 +34,7 @@ class MovieRankingModel(tf.keras.Model):
         unique_user_ids = np.array(range(user_range)).astype(str)
         unique_user_ages = np.array(range(user_age_range)).astype(str)
         unique_movie_ids = np.array(range(movie_range)).astype(str)
+        unique_genres = ["unknown" , "action", "adventure", "animation", "children's", "comedy", "crime", "documentary", "drama", "fantasy", "film-noir", "horror", "musical", "mystery", "romance", "sci-fi", "thriller", "war", "western"]
 
         self.user_embeddings = tf.keras.Sequential([
             tf.keras.layers.Input(shape=(1,), name='userId', dtype=tf.int64),
@@ -66,6 +68,21 @@ class MovieRankingModel(tf.keras.Model):
             )
         ])
 
+        self.genres_embeddings = tf.keras.Sequential([
+            tf.keras.layers.Input(shape=(1,), name='movieGenres', dtype=tf.string),
+            tf.keras.layers.TextVectorization(
+                max_tokens=21,
+                split='whitespace',
+                output_mode='int',
+                output_sequence_length=19,
+                vocabulary=unique_genres
+            ),
+            tf.keras.layers.Embedding(
+                21, embedding_dimension,
+            ),
+            tf.keras.layers.GlobalAveragePooling1D(keepdims=True)
+            ])
+
         self.ratings = tf.keras.Sequential([
             tf.keras.layers.Dense(256, activation='relu'),
             tf.keras.layers.Dense(64, activation='relu'),
@@ -74,13 +91,13 @@ class MovieRankingModel(tf.keras.Model):
 
     def call(self, inputs):
 
-        user_id, user_age, movie_id = inputs
+        user_id, user_age, movie_id, movie_genres = inputs
 
         user_embedding = self.user_embeddings(user_id)
         age_embedding = self.age_embeddings(user_age)
         movie_embedding = self.movie_embeddings(movie_id)
-
-        return self.ratings(tf.concat([user_embedding, age_embedding, movie_embedding], axis=2))
+        genres_embedding = self.genres_embeddings(movie_genres)
+        return self.ratings(tf.concat([user_embedding, age_embedding, movie_embedding, genres_embedding], axis=2))
 
 
 class MovielensModel(tfrs.models.Model):
@@ -96,7 +113,7 @@ class MovielensModel(tfrs.models.Model):
         )
 
     def call(self, inputs: Dict[str, tf.Tensor]) -> tf.Tensor:
-        return self.ranking_model((inputs['userId'], inputs['userAge'], inputs['movieId']))
+        return self.ranking_model((inputs['userId'], inputs['userAge'], inputs['movieId'], inputs['movieGenres']))
 
     def compute_loss(self,
                      inputs: Dict[Text, tf.Tensor],
