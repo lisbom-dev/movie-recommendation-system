@@ -1,7 +1,23 @@
-from typing import Dict, Text
+from typing import Dict, Text, List
+
 import numpy as np
+
+from tensorflow_metadata.proto.v0 import schema_pb2
+from tensorflow_transform.tf_metadata import schema_utils
 import tensorflow as tf
 import tensorflow_recommenders as tfrs
+
+from tfx import v1 as tfx
+from tfx_bsl.public import tfxio
+
+_FEATURE_KEYS = ['userId', 'movieId']
+_LABEL_KEY = 'rating'
+
+_FEATURE_SPEC = {
+    'userId': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
+    'movieId': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
+    'rating': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
+}
 
 
 class MovieRankingModel(tf.keras.Model):
@@ -62,7 +78,7 @@ class MovielensModel(tfrs.models.Model):
         self.ranking_model: tf.keras.Model = MovieRankingModel()
 
         self.task: tf.keras.layers.Layer = tfrs.tasks.Ranking(
-            loss=tf.keras.losses.MeanSquaredError,
+            loss=tf.keras.losses.MeanSquaredError(),
             metrics=[tf.keras.metrics.RootMeanSquaredError()]
         )
 
@@ -77,3 +93,46 @@ class MovielensModel(tfrs.models.Model):
         rating_predictions = self(inputs[0])
 
         return self.task(labels=labels, predictions=rating_predictions)
+
+
+def _input_fn(file_pattern: List[str],
+              data_accessor: tfx.components.DataAccessor,
+              schema: schema_pb2.Schema,
+              batch_size: int = 256) -> tf.data.Dataset:
+
+    return data_accessor.tf_dataset_factory(
+        file_pattern,
+        tfxio.TensorFlowDatasetOptions(
+            batch_size=batch_size, label_key=_LABEL_KEY
+            ),
+        schema
+        ).repeat()
+
+def _build_keras_model() -> tf.keras.Model:
+    return MovielensModel()
+
+
+def run_fn(fn_args: tfx.components.FnArgs):
+
+    schema = schema_utils.schema_from_feature_spec(_FEATURE_SPEC)
+
+    train_dataset = _input_fn(
+        fn_args.train_files, fn_args.data_accessor, schema, batch_size=8192
+    )
+    eval_dataset = _input_fn(
+        fn_args.eval_files, fn_args.data_accessor, schema, batch_size=4096
+    )
+
+    model = _build_keras_model()
+
+    model.compile(optimizer=tf.keras.optimizers.Adagrad(learning_rate=0.1))
+
+    model.fit(
+        train_dataset,
+        steps_per_epoch=fn_args.train_steps,
+        epochs=3,
+        validation_data=eval_dataset,
+        validation_steps=fn_args.eval_steps
+    )
+
+    model.save(fn_args.serving_model_dir)
